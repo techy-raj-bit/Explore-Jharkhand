@@ -7,7 +7,7 @@ export const translations = {
     practicalTips: "Practical tips",
     aiPlanner: "AI Planner",
     map: "Map",
-    sustainableTrip: "Sustainable Trip",
+    sustainableTrip: "Sustainable Travel",
     login: "Login",
     logout: "Logout",
     dashboard: "Dashboard",

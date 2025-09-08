@@ -89,16 +89,16 @@ const Header = () => {
             {t('aiPlanner')}
           </Link>
           <Link
-            to="/map\"
-            className="text-foreground/80 hover:text-foreground transition-colors font-medium\"
+            to="/map"
+            className="text-foreground/80 hover:text-foreground transition-colors font-medium"
           >
             {t('map')}
           </Link>
           <Link
-            to="/sustainable-travel\"
+            to="/sustainable-trip"
             className="text-foreground/80 hover:text-foreground transition-colors font-medium"
           >
-            {t('Sustainable Travel')}
+            {t('sustainableTrip')}
           </Link>
         </nav>
 
@@ -178,14 +178,14 @@ const Header = () => {
               {t('aiPlanner')}
             </Link>
             <Link
-              to="/map\"
-              className="text-foreground/80 hover:text-foreground transition-colors font-medium\"
+              to="/map"
+              className="text-foreground/80 hover:text-foreground transition-colors font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
               {t('map')}
             </Link>
             <Link
-              to="/sustainable-trip\"
+              to="/sustainable-trip"
               className="text-foreground/80 hover:text-foreground transition-colors font-medium"
               onClick={() => setIsMenuOpen(false)}
             >
