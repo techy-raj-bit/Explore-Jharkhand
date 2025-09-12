@@ -12,6 +12,7 @@ import jwt
 import json
 import uuid
 from pathlib import Path
+from services.deepseek_service import DeepseekService
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -39,6 +40,9 @@ api_router = APIRouter(prefix="/api")
 
 # Security
 security = HTTPBearer()
+
+# Initialize Deepseek service
+deepseek_service = DeepseekService()
 
 # CORS middleware
 app.add_middleware(
@@ -341,6 +345,154 @@ async def get_reviews(destination_id: Optional[str] = None, provider_id: Optiona
                 reviews = await cur.fetchall()
                 
                 return reviews
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/planner")
+async def generate_itinerary(
+    request_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate AI-powered travel itinerary using Deepseek"""
+    try:
+        # Extract user preferences from request
+        preferences = {
+            "destinations": request_data.get("destinations", ["Ranchi"]),
+            "budget": request_data.get("budget", 15000),
+            "days": request_data.get("days", 3),
+            "interests": request_data.get("interests", ["Sightseeing"]),
+            "travel_style": request_data.get("travel_style", "balanced"),
+            "group_size": request_data.get("group_size", 2)
+        }
+        
+        # Generate itinerary using Deepseek
+        itinerary = deepseek_service.generate_itinerary(preferences)
+        
+        # Optionally save to database
+        pool = await get_db()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("""
+                    INSERT INTO itineraries (id, user_id, destination, days, budget, content, preferences, generated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    itinerary["id"],
+                    current_user["id"],
+                    itinerary["destination"],
+                    itinerary["days"],
+                    itinerary["budget"],
+                    itinerary["content"],
+                    json.dumps(itinerary["preferences"]),
+                    itinerary["generated_at"]
+                ))
+        
+        return itinerary
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating itinerary: {str(e)}")
+
+@api_router.post("/chatbot")
+async def chatbot_message(
+    request_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Handle chatbot conversation using Deepseek"""
+    try:
+        user_message = request_data.get("message", "")
+        session_id = request_data.get("session_id", str(uuid.uuid4()))
+        
+        if not user_message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        # Get conversation history (optional)
+        pool = await get_db()
+        conversation_history = []
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                # Get recent conversation history
+                await cur.execute("""
+                    SELECT message, response, created_at 
+                    FROM chat_logs 
+                    WHERE user_id = %s AND session_id = %s 
+                    ORDER BY created_at DESC 
+                    LIMIT 5
+                """, (current_user["id"], session_id))
+                
+                history = await cur.fetchall()
+                for chat in reversed(history):
+                    conversation_history.extend([
+                        {"role": "user", "content": chat["message"]},
+                        {"role": "assistant", "content": chat["response"]}
+                    ])
+        
+        # Generate response using Deepseek
+        response = deepseek_service.chat_response(user_message, conversation_history)
+        
+        # Save conversation to database
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("""
+                    INSERT INTO chat_logs (id, user_id, session_id, message, response, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    str(uuid.uuid4()),
+                    current_user["id"],
+                    session_id,
+                    user_message,
+                    response["message"],
+                    datetime.utcnow()
+                ))
+        
+        return {
+            "response": response["message"],
+            "session_id": session_id,
+            "timestamp": response["timestamp"],
+            "model": response["model"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing chat message: {str(e)}")
+
+@api_router.get("/chatbot/history/{session_id}")
+async def get_chat_history(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get chat history for a session"""
+    try:
+        pool = await get_db()
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute("""
+                    SELECT message, response, created_at 
+                    FROM chat_logs 
+                    WHERE user_id = %s AND session_id = %s 
+                    ORDER BY created_at ASC
+                """, (current_user["id"], session_id))
+                
+                history = await cur.fetchall()
+                
+                # Format for frontend
+                formatted_history = []
+                for chat in history:
+                    formatted_history.extend([
+                        {
+                            "id": f"user_{chat['created_at'].timestamp()}",
+                            "text": chat["message"],
+                            "sender": "user",
+                            "timestamp": chat["created_at"].isoformat()
+                        },
+                        {
+                            "id": f"bot_{chat['created_at'].timestamp()}",
+                            "text": chat["response"],
+                            "sender": "bot",
+                            "timestamp": chat["created_at"].isoformat()
+                        }
+                    ])
+                
+                return formatted_history
+                
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

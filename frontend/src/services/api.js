@@ -105,4 +105,25 @@ export const reviewsAPI = {
   }
 };
 
+// AI Services API
+export const aiAPI = {
+  generateItinerary: async (preferences) => {
+    const response = await api.post('/planner', preferences);
+    return response.data;
+  },
+
+  sendChatMessage: async (message, sessionId = null) => {
+    const response = await api.post('/chatbot', {
+      message,
+      session_id: sessionId
+    });
+    return response.data;
+  },
+
+  getChatHistory: async (sessionId) => {
+    const response = await api.get(`/chatbot/history/${sessionId}`);
+    return response.data;
+  }
+};
+
 export default api;

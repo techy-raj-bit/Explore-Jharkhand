@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { Card, CardContent } from '../components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { MapPin, Calendar, Users, IndianRupee, Sparkles } from 'lucide-react';
+import { deepseekAPI } from '../services/deepseekApi';
+import { useAuth } from '../contexts/AuthContext';
 
 const AIPlanner = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    destination: '',
+    destinations: [],
     duration: '',
     budget: '',
     groupSize: '',
@@ -21,6 +26,14 @@ const AIPlanner = () => {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState(null);
+  const [error, setError] = useState(null);
+
+  // Check if user is logged in
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+    }
+  }, [user, navigate]);
 
   const travelStyles = [
     {
@@ -64,56 +77,54 @@ const AIPlanner = () => {
     }));
   };
 
+  const handleDestinationChange = (destination) => {
+    setFormData(prev => ({
+      ...prev,
+      destinations: prev.destinations.includes(destination)
+        ? prev.destinations.filter(d => d !== destination)
+        : [...prev.destinations, destination]
+    }));
+  };
+
+  const jharkhandDestinations = [
+    'Ranchi', 'Netarhat', 'Betla National Park', 'Parasnath Hill',
+    'Deoghar', 'Hazaribagh', 'Jamshedpur', 'Dassam Falls',
+    'Hundru Falls', 'Jonha Falls', 'Rajrappa Temple'
+  ];
+
   const generateItinerary = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    if (formData.destinations.length === 0) {
+      setError('Please select at least one destination');
+      return;
+    }
+
     setIsGenerating(true);
-    
-    // Simulate AI generation delay
-    setTimeout(() => {
-      const mockPlan = {
-        destination: formData.destination || 'Jharkhand',
-        duration: formData.duration || '3 days',
-        totalBudget: formData.budget || '₹25,000',
-        itinerary: [
-          {
-            day: 1,
-            title: 'Arrival & City Exploration',
-            activities: [
-              { time: '10:00 AM', activity: 'Arrive at Ranchi Airport', location: 'Ranchi' },
-              { time: '12:00 PM', activity: 'Check-in at Hotel', location: 'Ranchi City' },
-              { time: '2:00 PM', activity: 'Visit Tagore Hill', location: 'Morabadi' },
-              { time: '4:00 PM', activity: 'Explore Rock Garden', location: 'Ranchi' },
-              { time: '7:00 PM', activity: 'Dinner at local restaurant', location: 'Main Road' }
-            ]
-          },
-          {
-            day: 2,
-            title: 'Nature & Waterfalls',
-            activities: [
-              { time: '8:00 AM', activity: 'Breakfast at hotel', location: 'Hotel' },
-              { time: '9:30 AM', activity: 'Drive to Hundru Falls', location: 'Hundru' },
-              { time: '11:00 AM', activity: 'Explore Hundru Falls', location: 'Hundru Falls' },
-              { time: '1:00 PM', activity: 'Lunch at local dhaba', location: 'Highway' },
-              { time: '3:00 PM', activity: 'Visit Jonha Falls', location: 'Jonha' },
-              { time: '6:00 PM', activity: 'Return to hotel', location: 'Ranchi' }
-            ]
-          },
-          {
-            day: 3,
-            title: 'Cultural Experience & Departure',
-            activities: [
-              { time: '9:00 AM', activity: 'Visit Tribal Museum', location: 'Ranchi' },
-              { time: '11:00 AM', activity: 'Shopping at local markets', location: 'Main Road' },
-              { time: '1:00 PM', activity: 'Traditional lunch', location: 'Local Restaurant' },
-              { time: '3:00 PM', activity: 'Check-out from hotel', location: 'Hotel' },
-              { time: '4:00 PM', activity: 'Departure', location: 'Ranchi Airport' }
-            ]
-          }
-        ]
+    setError(null);
+
+    try {
+      // Prepare preferences for Deepseek API
+      const preferences = {
+        destinations: formData.destinations,
+        budget: parseInt(formData.budget?.replace(/[₹,]/g, '') || '15000'),
+        days: parseInt(formData.duration?.split(' ')[0] || '3'),
+        interests: formData.interests,
+        travel_style: formData.travelStyle,
+        group_size: parseInt(formData.groupSize?.split(' ')[0] || '2')
       };
-      
-      setGeneratedPlan(mockPlan);
+
+      const result = await deepseekAPI.generateItinerary(preferences);
+      setGeneratedPlan(result);
+    } catch (error) {
+      console.error('Error generating itinerary:', error);
+      setError(error.message || 'Failed to generate itinerary. Please try again.');
+    } finally {
       setIsGenerating(false);
-    }, 3000);
+    }
   };
 
   if (generatedPlan) {
@@ -141,14 +152,14 @@ const AIPlanner = () => {
                       <Calendar className="h-8 w-8 text-blue-600" />
                       <div>
                         <p className="font-semibold">Duration</p>
-                        <p className="text-muted-foreground">{generatedPlan.duration}</p>
+                        <p className="text-muted-foreground">{generatedPlan.days} days</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
                       <IndianRupee className="h-8 w-8 text-green-600" />
                       <div>
                         <p className="font-semibold">Total Budget</p>
-                        <p className="text-muted-foreground">{generatedPlan.totalBudget}</p>
+                        <p className="text-muted-foreground">₹{generatedPlan.budget?.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -162,34 +173,22 @@ const AIPlanner = () => {
                 </CardContent>
               </Card>
 
-              {/* Daily Itinerary */}
-              <div className="space-y-6">
-                {generatedPlan.itinerary.map((day) => (
-                  <Card key={day.day}>
-                    <CardContent className="p-6">
-                      <h3 className="text-2xl font-bold mb-4">
-                        Day {day.day}: {day.title}
-                      </h3>
-                      <div className="space-y-4">
-                        {day.activities.map((activity, index) => (
-                          <div key={index} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
-                            <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium min-w-fit">
-                              {activity.time}
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold">{activity.activity}</p>
-                              <p className="text-muted-foreground text-sm flex items-center">
-                                <MapPin className="h-3 w-3 mr-1" />
-                                {activity.location}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              {/* AI Generated Content */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Sparkles className="h-5 w-5 mr-2 text-blue-600" />
+                    AI Generated Itinerary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose max-w-none">
+                    <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                      {generatedPlan.content}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               <div className="text-center mt-12">
                 <Button 
@@ -201,6 +200,12 @@ const AIPlanner = () => {
                 </Button>
                 <Button className="bg-green-600 hover:bg-green-700">
                   Download Itinerary
+                </Button>
+                <Button 
+                  onClick={() => navigate('/booking')}
+                  className="bg-orange-600 hover:bg-orange-700 ml-4"
+                >
+                  Book This Trip
                 </Button>
               </div>
             </div>
@@ -237,16 +242,28 @@ const AIPlanner = () => {
               <div className="space-y-8">
                 {/* Destination Input */}
                 <div>
-                  <Label htmlFor="destination" className="text-lg font-semibold mb-3 block">
-                    Where do you want to go?
+                  <Label className="text-lg font-semibold mb-3 block">
+                    Which destinations in Jharkhand would you like to visit?
                   </Label>
-                  <Input
-                    id="destination"
-                    placeholder="Enter destination (e.g., Kashmir Valley, Goa, Rajasthan)"
-                    value={formData.destination}
-                    onChange={(e) => setFormData(prev => ({ ...prev, destination: e.target.value }))}
-                    className="text-base"
-                  />
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {jharkhandDestinations.map((destination) => (
+                      <Badge
+                        key={destination}
+                        variant={formData.destinations.includes(destination) ? "default" : "outline"}
+                        className={`cursor-pointer p-3 text-center justify-center ${
+                          formData.destinations.includes(destination)
+                            ? 'bg-green-600 hover:bg-green-700'
+                            : 'hover:bg-gray-100'
+                        }`}
+                        onClick={() => handleDestinationChange(destination)}
+                      >
+                        {destination}
+                      </Badge>
+                    ))}
+                  </div>
+                  {error && error.includes('destination') && (
+                    <p className="text-red-500 text-sm mt-2">{error}</p>
+                  )}
                 </div>
 
                 {/* Duration, Budget, Group Size */}
@@ -345,11 +362,18 @@ const AIPlanner = () => {
                   </div>
                 </div>
 
+                {/* Error Display */}
+                {error && !error.includes('destination') && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-red-700">{error}</p>
+                  </div>
+                )}
+
                 {/* Generate Button */}
                 <div className="text-center pt-6">
                   <Button
                     onClick={generateItinerary}
-                    disabled={isGenerating}
+                    disabled={isGenerating || !user}
                     className="bg-gray-600 hover:bg-gray-700 text-white px-8 py-3 text-lg"
                   >
                     {isGenerating ? (
@@ -364,9 +388,14 @@ const AIPlanner = () => {
                       </>
                     )}
                   </Button>
-                  {!isGenerating && (
+                  {!isGenerating && user && (
                     <p className="text-sm text-muted-foreground mt-3">
-                      This will take about 30 seconds to create your personalized plan
+                      Powered by Deepseek AI - This will take about 30 seconds to create your personalized plan
+                    </p>
+                  )}
+                  {!user && (
+                    <p className="text-sm text-red-500 mt-3">
+                      Please log in to use the AI Planner
                     </p>
                   )}
                 </div>

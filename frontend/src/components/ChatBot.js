@@ -3,20 +3,24 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { MessageCircle, X, Send, Bot, User } from 'lucide-react';
-import { chatbotResponses } from '../data/mock';
+import { useAuth } from '../contexts/AuthContext';
+import { deepseekAPI } from '../services/deepseekApi';
 
 const ChatBot = () => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: chatbotResponses.greetings[0],
+      text: "Namaste! Welcome to Jharkhand Tourism. How can I help you explore the beauty of Jharkhand?",
       sender: 'bot',
       timestamp: new Date()
     }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -27,34 +31,31 @@ const ChatBot = () => {
     scrollToBottom();
   }, [messages]);
 
-  const getBotResponse = (userMessage) => {
-    const message = userMessage.toLowerCase();
-    
-    if (message.includes('hello') || message.includes('hi') || message.includes('namaste')) {
-      return chatbotResponses.greetings[Math.floor(Math.random() * chatbotResponses.greetings.length)];
+  // Load chat history when component mounts
+  useEffect(() => {
+    if (user && isOpen) {
+      loadChatHistory();
     }
-    
-    if (message.includes('destination') || message.includes('place') || message.includes('visit')) {
-      return chatbotResponses.destinations;
+  }, [user, isOpen]);
+
+  const loadChatHistory = async () => {
+    try {
+      const history = await deepseekAPI.getChatHistory(sessionId);
+      if (history.length > 0) {
+        setMessages(history);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
     }
-    
-    if (message.includes('culture') || message.includes('tribal') || message.includes('tradition')) {
-      return chatbotResponses.culture;
-    }
-    
-    if (message.includes('weather') || message.includes('climate') || message.includes('season')) {
-      return chatbotResponses.weather;
-    }
-    
-    if (message.includes('transport') || message.includes('travel') || message.includes('reach')) {
-      return chatbotResponses.transport;
-    }
-    
-    return chatbotResponses.default;
   };
 
   const sendMessage = async () => {
     if (!inputMessage.trim()) return;
+    
+    if (!user) {
+      setError('Please log in to use the chatbot');
+      return;
+    }
 
     const userMessage = {
       id: Date.now(),
@@ -66,19 +67,35 @@ const ChatBot = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsTyping(true);
+    setError(null);
 
-    // Simulate typing delay
-    setTimeout(() => {
+    try {
+      // Send message to Deepseek API
+      const response = await deepseekAPI.sendChatMessage(inputMessage, sessionId);
+      
       const botResponse = {
         id: Date.now() + 1,
-        text: getBotResponse(inputMessage),
+        text: response.response,
         sender: 'bot',
-        timestamp: new Date()
+        timestamp: new Date(response.timestamp)
       };
       
       setMessages(prev => [...prev, botResponse]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError('Failed to send message. Please try again.');
+      
+      // Add error message to chat
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: "I'm sorry, I'm having trouble connecting right now. Please try again in a moment.",
+        sender: 'bot',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -104,7 +121,12 @@ const ChatBot = () => {
           <CardHeader className="bg-green-600 text-white rounded-t-lg p-4 flex-shrink-0">
             <CardTitle className="flex items-center space-x-2 text-lg">
               <Bot className="h-5 w-5" />
-              <span>Jharkhand Tourism Assistant</span>
+              <span>Jharkhand AI Assistant</span>
+              {user && (
+                <span className="text-xs bg-green-700 px-2 py-1 rounded-full ml-auto">
+                  Powered by Deepseek
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           
@@ -150,6 +172,13 @@ const ChatBot = () => {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Error Display */}
+            {error && (
+              <div className="px-4 py-2 bg-red-50 border-t border-red-200">
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            )}
+
             {/* Input Container - Fixed at bottom */}
             <div className="border-t p-4 flex-shrink-0">
               <div className="flex space-x-2">
@@ -157,13 +186,29 @@ const ChatBot = () => {
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask about Jharkhand..."
+                  placeholder={user ? "Ask about Jharkhand..." : "Please log in to chat"}
                   className="flex-1"
+                  disabled={!user || isTyping}
                 />
-                <Button onClick={sendMessage} size="icon" className="bg-green-600 hover:bg-green-700">
+                <Button 
+                  onClick={sendMessage} 
+                  size="icon" 
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={!user || isTyping || !inputMessage.trim()}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
+              {!user && (
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  <button 
+                    onClick={() => window.location.href = '/login'}
+                    className="text-green-600 hover:underline"
+                  >
+                    Log in
+                  </button> to start chatting with our AI assistant
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
